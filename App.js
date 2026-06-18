@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, Vibration, TextInput, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, TouchableOpacity, Vibration, TextInput, ScrollView, KeyboardAvoidingView, Platform, StyleSheet } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const QUESTIONS = [
@@ -7,17 +7,11 @@ const QUESTIONS = [
   { emoji: '💼', label: 'Work/Assignment', win: 'Open doc. Type 1 trash sentence. Save.' },
   { emoji: '🧹', label: 'Cleaning/Laundry', win: 'Pick up 3 things. Count out loud. Done.' },
   { emoji: '📱', label: 'Stuck on Phone', win: 'Put phone face down. Count to 10. Done.' },
-  { emoji: '❓', label: "Don't Know", win: 'Stand up. Drink water. That’s today’s win.' }
+  { emoji: '❓', label: "Don't Know", win: 'Stand up. Drink water. That\'s today\'s win.' }
 ];
 
-// Simple storage using useState + fake persistence
-const useStorage = (key, initial) => {
-  const [value, setValue] = useState(initial);
-  return [value, setValue];
-};
-
 export default function App() {
-  const [screen, setScreen] = useState('loading'); // loading | onboarding | panic | questions | win | shredder | onething | home
+  const [screen, setScreen] = useState('loading'); // loading | onboarding | home | questions | panic | shredder | win
   const [onboardingStep, setOnboardingStep] = useState(0);
   const [currentWin, setCurrentWin] = useState('');
   const [saves, setSaves] = useState(0);
@@ -27,436 +21,369 @@ export default function App() {
   const [shredSteps, setShredSteps] = useState([]);
   const [shredLoading, setShredLoading] = useState(false);
   const [shredCount, setShredCount] = useState(0);
-  
-  // One Thing state
-  const [oneThing, setOneThing] = useStorage('ot_today', null);
-  const [oneThingInput, setOneThingInput] = useState('');
-  const [streak, setStreak] = useStorage('ot_streak', 0);
-  const [checkedIn, setCheckedIn] = useState(false);
 
-  const todayKey = new Date().toDateString();
-  const isEvening = new Date().getHours() >= 18;
-
-  // BUG #1 FIX: Check if user saw onboarding
+  // BUG #1 FIX: Check if user already did onboarding
   useEffect(() => {
-    AsyncStorage.getItem('sawOnboarding').then(value => {
-      if (value === 'true') {
-        setScreen('home'); // skip to home if seen
-      } else {
-        setScreen('onboarding'); // show onboarding first time
+    const checkOnboarding = async () => {
+      try {
+        const done = await AsyncStorage.getItem('onboarding_done');
+        const savedSaves = await AsyncStorage.getItem('saves');
+        const savedShredCount = await AsyncStorage.getItem('shred_count');
+        
+        if (savedSaves) setSaves(parseInt(savedSaves));
+        if (savedShredCount) setShredCount(parseInt(savedShredCount));
+        
+        if (done === 'true') {
+          setScreen('home');
+        } else {
+          setScreen('onboarding');
+        }
+      } catch (e) {
+        setScreen('onboarding');
       }
-    });
+    };
+    checkOnboarding();
   }, []);
 
-  // BUG #1 FIX: Auto-advance onboarding every 3 sec
-  useEffect(() => {
-    if (screen!== 'onboarding') return;
-    const timer = setTimeout(() => {
-      if (onboardingStep < 2) {
-        setOnboardingStep(onboardingStep + 1);
-      } else {
-        finishOnboarding();
-      }
-    }, 3000);
-    return () => clearTimeout(timer);
-  }, [onboardingStep, screen]);
-
-  const finishOnboarding = async () => {
-    await AsyncStorage.setItem('sawOnboarding', 'true');
-    setScreen('home');
-  };
-
-  useEffect(() => {
-    // Reset One Thing if new day
-    if (oneThing?.date!== todayKey) {
-      setOneThing(null);
-      setCheckedIn(false);
+  const handleSkipOnboarding = async () => {
+    try {
+      await AsyncStorage.setItem('onboarding_done', 'true');
+      setScreen('home');
+    } catch (e) {
+      setScreen('home');
     }
-  }, []);
+  };
 
   const handlePanic = () => {
-    Vibration.vibrate(400);
-    setSaves(saves + 1);
-    setScreen('questions');
+    Vibration.vibrate(50);
+    setScreen('panic');
   };
 
-  const handleQuestion = (win) => {
+  const handleWinComplete = async () => {
+    const newSaves = saves + 1;
+    setSaves(newSaves);
+    await AsyncStorage.setItem('saves', newSaves.toString());
     Vibration.vibrate(100);
-    setCurrentWin(win);
     setScreen('win');
-  };
-
-  const handleDone = () => {
-    setScreen('home');
-    setCurrentWin('');
   };
 
   const handleShred = async () => {
     if (!shredInput.trim()) return;
-    if (shredCount >= 3) {
-      alert('Free tier: 3 shreds/week. Upgrade in 60 days.');
-      return;
-    }
     setShredLoading(true);
-    setShredSteps([]);
     
-    // Fake AI shred for now - replace with API call later
-    setTimeout(() => {
-      const fakeSteps = [
-        'Open the document',
-        'Read first line only',
-        'Write one bad sentence',
-        'Take 2 min break',
-        'Write second sentence',
-        'Fix one typo',
-        'Add one idea',
-        'Save your work',
-        'Close the document',
-        'Celebrate - you started'
+    // Fake shred for MVP - breaks text into 3 steps
+    setTimeout(async () => {
+      const steps = [
+        `Step 1: Open it. That's it.`,
+        `Step 2: Do the smallest part. 30 seconds.`,
+        `Step 3: Stop. You won.`
       ];
-      setShredSteps(fakeSteps);
-      setShredCount(shredCount + 1);
+      setShredSteps(steps);
+      const newCount = shredCount + 1;
+      setShredCount(newCount);
+      await AsyncStorage.setItem('shred_count', newCount.toString());
       setShredLoading(false);
-    }, 1500);
+    }, 800);
   };
 
-  const commitOneThing = () => {
-    if (!oneThingInput.trim()) return;
-    setOneThing({ text: oneThingInput, date: todayKey, done: false });
-    setOneThingInput('');
-    Vibration.vibrate(100);
-  };
-
-  const checkInOneThing = (didIt) => {
-    if (didIt) {
-      setOneThing({...oneThing, done: true });
-      setStreak(streak + 1);
-      Vibration.vibrate([100, 50, 100]);
-    }
-    setCheckedIn(true);
-  };
-
-  // LOADING SCREEN
   if (screen === 'loading') {
-    return <View style={{ flex: 1, backgroundColor: '#0A0A0A' }} />;
-  }
-
-  // BUG #1 FIX: ONBOARDING SCREEN
-  if (screen === 'onboarding') {
-    const text = [
-      "Welcome to Unstuck",
-      "Hit Panic Button when frozen",
-      "Free for 60 days"
-    ];
-    
     return (
-      <View style={{ flex: 1, backgroundColor: '#0A0A0A', justifyContent: 'center', alignItems: 'center' }}>
-        <TouchableOpacity 
-          onPress={finishOnboarding}
-          style={{ position: 'absolute', top: 60, right: 20, padding: 10 }}>
-          <Text style={{ color: '#666', fontSize: 16 }}>Skip</Text>
-        </TouchableOpacity>
-        
-        <Text style={{ color: '#FF3B30', fontSize: 32, fontWeight: '900', marginBottom: 40 }}>
-          {text[onboardingStep]}
-        </Text>
-        
-        <View style={{ flexDirection: 'row', position: 'absolute', bottom: 60 }}>
-          {[0,1,2].map(i => (
-            <View key={i} style={{ 
-              width: 8, height: 8, borderRadius: 4, margin: 4,
-              backgroundColor: i === onboardingStep? '#FF3B30' : '#333'
-            }} />
-          ))}
-        </View>
+      <View style={styles.container}>
+        <Text style={styles.loadingText}>unstuck</Text>
       </View>
     );
   }
 
-  // HOME SCREEN
+  if (screen === 'onboarding') {
+    return (
+      <View style={styles.container}>
+        <Text style={styles.title}>Stop drowning.</Text>
+        <Text style={styles.subtitle}>1 tap. 1 tiny win. Done.</Text>
+        
+        <TouchableOpacity style={styles.button} onPress={() => setScreen('home')}>
+          <Text style={styles.buttonText}>Start</Text>
+        </TouchableOpacity>
+        
+        <TouchableOpacity style={styles.skipButton} onPress={handleSkipOnboarding}>
+          <Text style={styles.skipText}>Skip intro</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
   if (screen === 'home') {
     return (
-      <View style={{ flex: 1, backgroundColor: '#0A0A0A', padding: 20, paddingTop: 60 }}>
-        <Text style={{ color: '#FF3B30', fontSize: 32, fontWeight: '900', marginBottom: 4 }}>UNSTUCK</Text>
-        <Text style={{ color: '#666', fontSize: 14, marginBottom: 30 }}>Day 4 Toolkit</Text>
+      <View style={styles.container}>
+        <Text style={styles.savesText}>Saves: {saves}</Text>
         
-        <TouchableOpacity onPress={() => setScreen('panic')} style={{
-          backgroundColor: '#FF3B30', borderRadius: 20, padding: 20, marginBottom: 12, alignItems: 'center'
-        }}>
-          <Text style={{ color: '#FFF', fontSize: 24, fontWeight: '900' }}>I'M STUCK</Text>
-          <Text style={{ color: '#FFB3B3', fontSize: 12, marginTop: 4 }}>Panic saves: {saves}</Text>
+        <TouchableOpacity style={styles.panicButton} onPress={handlePanic}>
+          <Text style={styles.panicText}>I'M STUCK</Text>
         </TouchableOpacity>
-
-        <TouchableOpacity onPress={() => setScreen('shredder')} style={{
-          backgroundColor: '#1A1A1A', borderRadius: 16, padding: 16, marginBottom: 10, flexDirection: 'row', alignItems: 'center'
-        }}>
-          <Text style={{ fontSize: 24, marginRight: 12 }}>🔪</Text>
-          <View style={{ flex: 1 }}>
-            <Text style={{ color: '#FFF', fontSize: 16, fontWeight: '700' }}>Task Shredder</Text>
-            <Text style={{ color: '#888', fontSize: 12 }}>{3 - shredCount} free shreds left</Text>
-          </View>
-          <Text style={{ color: '#666' }}>→</Text>
+        
+        <TouchableOpacity style={styles.secondaryButton} onPress={() => setScreen('questions')}>
+          <Text style={styles.secondaryText}>What kind of stuck?</Text>
         </TouchableOpacity>
-
-        <TouchableOpacity onPress={() => setScreen('onething')} style={{
-          backgroundColor: '#1A1A1A', borderRadius: 16, padding: 16, marginBottom: 10, flexDirection: 'row', alignItems: 'center'
-        }}>
-          <Text style={{ fontSize: 24, marginRight: 12 }}>🎯</Text>
-          <View style={{ flex: 1 }}>
-            <Text style={{ color: '#FFF', fontSize: 16, fontWeight: '700' }}>Today's One Thing</Text>
-            <Text style={{ color: '#888', fontSize: 12 }}>
-              {oneThing? (oneThing.done? '✅ Done' : '⏳ Pending') : 'Not set'} • 🔥 {streak} day streak
-            </Text>
-          </View>
-          <Text style={{ color: '#666' }}>→</Text>
+        
+        <TouchableOpacity style={styles.secondaryButton} onPress={() => setScreen('shredder')}>
+          <Text style={styles.secondaryText}>Shred my brain dump</Text>
         </TouchableOpacity>
       </View>
     );
   }
 
-  // PANIC SCREEN
-  if (screen === 'panic') {
-    return (
-      <View style={{ flex: 1, backgroundColor: '#0A0A0A', justifyContent: 'center', alignItems: 'center', padding: 20 }}>
-        <Text style={{ color: '#FF3B30', fontSize: 36, fontWeight: '900', marginBottom: 8 }}>UNSTUCK</Text>
-        <Text style={{ color: '#666', fontSize: 14, marginBottom: 40 }}>ADHD Panic Button</Text>
-        <TouchableOpacity onPress={handlePanic} style={{
-          width: 240, height: 240, borderRadius: 120, backgroundColor: '#FF3B30',
-          justifyContent: 'center', alignItems: 'center',
-          shadowColor: '#FF3B30', shadowOpacity: 0.6, shadowRadius: 20
-        }}>
-          <Text style={{ color: '#FFF', fontSize: 32, fontWeight: '900' }}>I'M STUCK</Text>
-        </TouchableOpacity>
-        <Text style={{ color: '#555', fontSize: 12, marginTop: 30 }}>Panic saves: {saves}</Text>
-        <TouchableOpacity onPress={() => setScreen('home')} style={{ marginTop: 20 }}>
-          <Text style={{ color: '#666', fontSize: 14 }}>← Back to tools</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  }
-
-  // QUESTIONS SCREEN
   if (screen === 'questions') {
     return (
-      <View style={{ flex: 1, backgroundColor: '#0A0A0A', justifyContent: 'center', alignItems: 'center', padding: 20 }}>
-        <Text style={{ color: '#FFF', fontSize: 20, fontWeight: '700', marginBottom: 20, textAlign: 'center' }}>
-          What are you stuck on?
-        </Text>
+      <ScrollView contentContainerStyle={styles.container}>
+        <Text style={styles.title}>What kind?</Text>
         {QUESTIONS.map((q, i) => (
-          <TouchableOpacity key={i} onPress={() => handleQuestion(q.win)} style={{
-            backgroundColor: '#1A1A1A', borderRadius: 16, padding: 16, marginBottom: 10, width: '100%',
-            flexDirection: 'row', alignItems: 'center'
-          }}>
-            <Text style={{ fontSize: 24, marginRight: 12 }}>{q.emoji}</Text>
-            <Text style={{ color: '#FFF', fontSize: 16, fontWeight: '600' }}>{q.label}</Text>
+          <TouchableOpacity 
+            key={i} 
+            style={styles.questionButton} 
+            onPress={() => {
+              setCurrentWin(q.win);
+              setScreen('panic');
+            }}
+          >
+            <Text style={styles.questionText}>{q.emoji} {q.label}</Text>
           </TouchableOpacity>
         ))}
-      </View>
+        <TouchableOpacity style={styles.backButton} onPress={() => setScreen('home')}>
+          <Text style={styles.backText}>Back</Text>
+        </TouchableOpacity>
+      </ScrollView>
     );
   }
 
-  // WIN SCREEN
-  if (screen === 'win') {
+  if (screen === 'panic') {
     return (
-      <View style={{ flex: 1, backgroundColor: '#0A0A0A', justifyContent: 'center', alignItems: 'center', padding: 20 }}>
-        <View style={{ backgroundColor: '#1A1A1A', borderRadius: 16, padding: 20, marginBottom: 20 }}>
-          <Text style={{ color: '#FFF', fontSize: 18, textAlign: 'center', lineHeight: 26 }}>
-            {currentWin}
-          </Text>
-        </View>
-        <TouchableOpacity onPress={handleDone} style={{
-          backgroundColor: '#2ECC8F', borderRadius: 16, paddingVertical: 14, paddingHorizontal: 32
-        }}>
-          <Text style={{ color: '#FFF', fontSize: 16, fontWeight: '700' }}>DONE →</Text>
+      <View style={styles.container}>
+        <Text style={styles.panicTitle}>STOP.</Text>
+        <Text style={styles.winText}>{currentWin || 'Stand up. Drink water. That\'s today\'s win.'}</Text>
+        
+        <TouchableOpacity style={styles.doneButton} onPress={handleWinComplete}>
+          <Text style={styles.buttonText}>DONE. I WIN.</Text>
         </TouchableOpacity>
       </View>
     );
   }
 
-  // SHREDDER SCREEN
   if (screen === 'shredder') {
     return (
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios'? 'padding' : 'height'} style={{ flex: 1, backgroundColor: '#0A0A0A' }}>
-        <ScrollView style={{ flex: 1, padding: 20, paddingTop: 60 }}>
-          <TouchableOpacity onPress={() => setScreen('home')} style={{ marginBottom: 20 }}>
-            <Text style={{ color: '#666', fontSize: 16 }}>← Back</Text>
-          </TouchableOpacity>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.container}>
+        <ScrollView contentContainerStyle={styles.shredderContainer}>
+          <Text style={styles.title}>Brain dump</Text>
+          <Text style={styles.subtitle}>Dump everything. We'll shred it to 3 steps.</Text>
           
-          <Text style={{ color: '#FFF', fontSize: 24, fontWeight: '800', marginBottom: 8 }}>🔪 Task Shredder</Text>
-          <Text style={{ color: '#888', fontSize: 14, marginBottom: 20, lineHeight: 20 }}>
-            Paste any overwhelming task. Get 10 tiny steps.
-          </Text>
-
           <TextInput
+            style={styles.input}
+            multiline
+            placeholder="I'm overwhelmed by..."
+            placeholderTextColor="#666"
             value={shredInput}
             onChangeText={setShredInput}
-            placeholder="e.g. Write the Q3 report for my boss..."
-            placeholderTextColor="#555"
-            multiline
-            style={{
-              backgroundColor: '#1A1A1A', borderRadius: 14, padding: 14, color: '#FFF',
-              fontSize: 15, minHeight: 90, textAlignVertical: 'top', marginBottom: 12
-            }}
           />
-
-          <TouchableOpacity 
-            onPress={handleShred} 
-            disabled={shredLoading ||!shredInput.trim()}
-            style={{
-              backgroundColor: shredLoading ||!shredInput.trim()? '#333' : '#FF3B30',
-              borderRadius: 14, padding: 16, alignItems: 'center', marginBottom: 20
-            }}
-          >
-            <Text style={{ color: '#FFF', fontSize: 16, fontWeight: '700' }}>
-              {shredLoading? 'Shredding...' : shredCount >= 3? '🔒 Upgrade for more' : 'Shred This Task →'}
-            </Text>
+          
+          <TouchableOpacity style={styles.button} onPress={handleShred} disabled={shredLoading}>
+            <Text style={styles.buttonText}>{shredLoading ? 'Shredding...' : 'SHRED IT'}</Text>
           </TouchableOpacity>
 
           {shredSteps.length > 0 && (
-            <View>
-              <Text style={{ color: '#999', fontSize: 12, fontWeight: '700', marginBottom: 10, textTransform: 'uppercase' }}>
-                Your 10 tiny steps:
-              </Text>
+            <View style={styles.stepsContainer}>
               {shredSteps.map((step, i) => (
-                <View key={i} style={{ flexDirection: 'row', marginBottom: 10, alignItems: 'flex-start' }}>
-                  <View style={{
-                    width: 24, height: 24, borderRadius: 12, backgroundColor: '#2ECC8F',
-                    justifyContent: 'center', alignItems: 'center', marginRight: 10, marginTop: 2
-                  }}>
-                    <Text style={{ color: '#FFF', fontSize: 11, fontWeight: '800' }}>{i + 1}</Text>
-                  </View>
-                  <Text style={{ color: '#DDD', fontSize: 15, flex: 1, lineHeight: 22 }}>{step}</Text>
-                </View>
+                <Text key={i} style={styles.stepText}>{step}</Text>
               ))}
-              <View style={{ backgroundColor: '#1A2E1A', borderRadius: 12, padding: 14, marginTop: 8 }}>
-                <Text style={{ color: '#2ECC8F', fontSize: 13, fontWeight: '700' }}>Start with Step 1 only.</Text>
-                <Text style={{ color: '#888', fontSize: 12, marginTop: 2 }}>Ignore steps 2-10. They don't exist yet.</Text>
-              </View>
+              <TouchableOpacity style={styles.doneButton} onPress={handleWinComplete}>
+                <Text style={styles.buttonText}>I DID STEP 1</Text>
+              </TouchableOpacity>
             </View>
           )}
+          
+          <TouchableOpacity style={styles.backButton} onPress={() => {
+            setShredInput('');
+            setShredSteps([]);
+            setScreen('home');
+          }}>
+            <Text style={styles.backText}>Back</Text>
+          </TouchableOpacity>
         </ScrollView>
       </KeyboardAvoidingView>
     );
   }
 
-  // ONE THING SCREEN
-  if (screen === 'onething') {
+  if (screen === 'win') {
     return (
-      <View style={{ flex: 1, backgroundColor: '#0A0A0A', padding: 20, paddingTop: 60 }}>
-        <TouchableOpacity onPress={() => setScreen('home')} style={{ marginBottom: 20 }}>
-          <Text style={{ color: '#666', fontSize: 16 }}>← Back</Text>
+      <View style={styles.container}>
+        <Text style={styles.winTitle}>WIN.</Text>
+        <Text style={styles.subtitle}>You moved. That's enough.</Text>
+        <Text style={styles.savesText}>Total saves: {saves}</Text>
+        
+        <TouchableOpacity style={styles.button} onPress={() => setScreen('home')}>
+          <Text style={styles.buttonText}>Again</Text>
         </TouchableOpacity>
-
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
-          <View>
-            <Text style={{ color: '#FFF', fontSize: 24, fontWeight: '800', marginBottom: 4 }}>Today's One Thing</Text>
-            <Text style={{ color: '#888', fontSize: 14 }}>One commitment. No more.</Text>
-          </View>
-          {streak > 0 && (
-            <View style={{ alignItems: 'center', backgroundColor: '#1A1A1A', borderRadius: 14, padding: 10 }}>
-              <Text style={{ fontSize: 20 }}>🔥</Text>
-              <Text style={{ color: '#F5A623', fontSize: 16, fontWeight: '800' }}>{streak}</Text>
-              <Text style={{ color: '#666', fontSize: 10 }}>day{streak!== 1? 's' : ''}</Text>
-            </View>
-          )}
-        </View>
-
-        {!oneThing? (
-          <View>
-            <Text style={{ color: '#AAA', fontSize: 14, marginBottom: 12, lineHeight: 20 }}>
-              What's the <Text style={{ fontWeight: '700', color: '#FFF' }}>one thing</Text> that, if you did it today, would make today count?
-            </Text>
-            <TextInput
-              value={oneThingInput}
-              onChangeText={setOneThingInput}
-              placeholder="e.g. Send the first draft to my manager"
-              placeholderTextColor="#555"
-              multiline
-              style={{
-                backgroundColor: '#1A1A1A', borderRadius: 14, padding: 14, color: '#FFF',
-                fontSize: 15, minHeight: 80, textAlignVertical: 'top', marginBottom: 12
-              }}
-            />
-            <TouchableOpacity 
-              onPress={commitOneThing}
-              disabled={!oneThingInput.trim()}
-              style={{
-                backgroundColor: oneThingInput.trim()? '#FF3B30' : '#333',
-                borderRadius: 14, padding: 16, alignItems: 'center'
-              }}
-            >
-              <Text style={{ color: '#FFF', fontSize: 16, fontWeight: '700' }}>Commit to This →</Text>
-            </TouchableOpacity>
-          </View>
-        ) : (
-          <View>
-            <View style={{
-              backgroundColor: oneThing.done? '#1A2E1A' : '#1A1A1A',
-              borderRadius: 16, padding: 16, marginBottom: 16,
-              borderWidth: 1.5, borderColor: oneThing.done? '#2ECC8F' : '#333'
-            }}>
-              <Text style={{ color: '#999', fontSize: 11, fontWeight: '700', marginBottom: 8, textTransform: 'uppercase' }}>
-                Today's commitment
-              </Text>
-              <Text style={{
-                color: '#FFF', fontSize: 16, fontWeight: '600', lineHeight: 22,
-                textDecorationLine: oneThing.done? 'line-through' : 'none'
-              }}>
-                {oneThing.text}
-              </Text>
-              {oneThing.done && (
-                <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 10 }}>
-                  <Text style={{ fontSize: 20, marginRight: 8 }}>✅</Text>
-                  <Text style={{ color: '#2ECC8F', fontSize: 14, fontWeight: '700' }}>Done. That's what matters.</Text>
-                </View>
-              )}
-            </View>
-
-            {!oneThing.done && isEvening &&!checkedIn && (
-              <View style={{ backgroundColor: '#1A1A1A', borderRadius: 16, padding: 16 }}>
-                <Text style={{ color: '#FFF', fontSize: 15, fontWeight: '600', marginBottom: 14 }}>
-                  Evening check-in — did you do it?
-                </Text>
-                <View style={{ flexDirection: 'row', gap: 10 }}>
-                  <TouchableOpacity 
-                    onPress={() => checkInOneThing(true)}
-                    style={{ flex: 1, backgroundColor: '#2ECC8F', borderRadius: 12, padding: 14, alignItems: 'center' }}
-                  >
-                    <Text style={{ color: '#FFF', fontSize: 15, fontWeight: '700' }}>✅ Yes!</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity 
-                    onPress={() => checkInOneThing(false)}
-                    style={{ flex: 1, backgroundColor: '#333', borderRadius: 12, padding: 14, alignItems: 'center' }}
-                  >
-                    <Text style={{ color: '#DDD', fontSize: 15, fontWeight: '700' }}>Not today</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            )}
-
-            {checkedIn && (
-              <View style={{
-                backgroundColor: oneThing.done? '#1A2E1A' : '#1A1A1A',
-                borderRadius: 16, padding: 16
-              }}>
-                {oneThing.done? (
-                  <>
-                    <Text style={{ color: '#2ECC8F', fontSize: 16, fontWeight: '800', marginBottom: 4 }}>
-                      🔥 {streak}-day streak!
-                    </Text>
-                    <Text style={{ color: '#AAA', fontSize: 14 }}>Consistency compounds. Same thing tomorrow?</Text>
-                  </>
-                ) : (
-                  <>
-                    <Text style={{ color: '#FFF', fontSize: 15, fontWeight: '700', marginBottom: 4 }}>No problem.</Text>
-                    <Text style={{ color: '#AAA', fontSize: 14, lineHeight: 20 }}>Fresh start tomorrow. That's all it takes.</Text>
-                  </>
-                )}
-              </View>
-            )}
-          </View>
-        )}
       </View>
     );
   }
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#000',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 20,
+  },
+  loadingText: {
+    color: '#fff',
+    fontSize: 24,
+    fontWeight: '300',
+  },
+  title: {
+    color: '#fff',
+    fontSize: 32,
+    fontWeight: 'bold',
+    marginBottom: 10,
+    textAlign: 'center',
+  },
+  panicTitle: {
+    color: '#ff3b30',
+    fontSize: 48,
+    fontWeight: '900',
+    marginBottom: 20,
+  },
+  winTitle: {
+    color: '#34c759',
+    fontSize: 48,
+    fontWeight: '900',
+    marginBottom: 20,
+  },
+  subtitle: {
+    color: '#999',
+    fontSize: 16,
+    marginBottom: 40,
+    textAlign: 'center',
+  },
+  winText: {
+    color: '#fff',
+    fontSize: 20,
+    marginBottom: 40,
+    textAlign: 'center',
+    lineHeight: 28,
+  },
+  button: {
+    backgroundColor: '#007AFF',
+    paddingVertical: 16,
+    paddingHorizontal: 40,
+    borderRadius: 12,
+    marginTop: 20,
+    width: '100%',
+  },
+  panicButton: {
+    backgroundColor: '#ff3b30',
+    paddingVertical: 24,
+    paddingHorizontal: 40,
+    borderRadius: 16,
+    marginVertical: 20,
+    width: '100%',
+  },
+  doneButton: {
+    backgroundColor: '#34c759',
+    paddingVertical: 16,
+    paddingHorizontal: 40,
+    borderRadius: 12,
+    marginTop: 20,
+    width: '100%',
+  },
+  secondaryButton: {
+    borderColor: '#333',
+    borderWidth: 1,
+    paddingVertical: 16,
+    paddingHorizontal: 40,
+    borderRadius: 12,
+    marginTop: 12,
+    width: '100%',
+  },
+  questionButton: {
+    borderColor: '#333',
+    borderWidth: 1,
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    marginTop: 12,
+    width: '100%',
+  },
+  backButton: {
+    marginTop: 30,
+    padding: 10,
+  },
+  skipButton: {
+    marginTop: 20,
+    padding: 10,
+  },
+  buttonText: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  panicText: {
+    color: '#fff',
+    fontSize: 24,
+    fontWeight: '900',
+    textAlign: 'center',
+  },
+  secondaryText: {
+    color: '#fff',
+    fontSize: 16,
+    textAlign: 'center',
+  },
+  questionText: {
+    color: '#fff',
+    fontSize: 16,
+    textAlign: 'left',
+  },
+  backText: {
+    color: '#666',
+    fontSize: 14,
+  },
+  skipText: {
+    color: '#666',
+    fontSize: 14,
+  },
+  savesText: {
+    color: '#666',
+    fontSize: 14,
+    position: 'absolute',
+    top: 60,
+    right: 20,
+  },
+  input: {
+    backgroundColor: '#1c1c1e',
+    color: '#fff',
+    padding: 16,
+    borderRadius: 12,
+    width: '100%',
+    minHeight: 120,
+    fontSize: 16,
+    textAlignVertical: 'top',
+    marginBottom: 20,
+  },
+  shredderContainer: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  stepsContainer: {
+    marginTop: 30,
+    width: '100%',
+  },
+  stepText: {
+    color: '#fff',
+    fontSize: 16,
+    marginBottom: 12,
+    backgroundColor: '#1c1c1e',
+    padding: 12,
+    borderRadius: 8,
+  },
+});
