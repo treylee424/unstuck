@@ -1,0 +1,86 @@
+import React, { useState } from 'react';
+import { View, Text, TouchableOpacity, Vibration } from 'react-native';
+
+const QUESTIONS = [
+  { emoji: '📱', label: 'Text/Call Someone', win: 'Open their thread. Read last message. Don\'t reply yet. Win.' },
+  { emoji: '💼', label: 'Work/Assignment', win: 'Open doc. Type 1 trash sentence. Save.' },
+  { emoji: '🧹', label: 'Cleaning/Laundry', win: 'Pick up 3 things. Count out loud. Done.' },
+  { emoji: '📱', label: 'Stuck on Phone', win: 'Put phone face down. Count to 10. Done.' },
+  { emoji: '❓', label: "Don't Know", win: 'Stand up. Drink water. That’s today’s win.' }
+];
+
+export default function App() {
+  const [step, setStep] = useState('panic'); // panic | questions | win
+  const [currentWin, setCurrentWin] = useState('');
+  const [saves, setSaves] = useState(0);
+
+  const handlePanic = () => {
+    Vibration.vibrate(400);
+    setSaves(saves + 1);
+    setStep('questions');
+  };
+
+  const handleQuestion = (win) => {
+    Vibration.vibrate(100);
+    setCurrentWin(win);
+    setStep('win');
+  };
+
+  const handleDone = () => {
+    setStep('panic');
+    setCurrentWin('');
+  };
+
+  return (
+    <View style={{ flex: 1, backgroundColor: '#0A0A0A', justifyContent: 'center', alignItems: 'center', padding: 20 }}>
+      <Text style={{ color: '#FF3B30', fontSize: 36, fontWeight: '900', marginBottom: 8 }}>UNSTUCK</Text>
+      <Text style={{ color: '#666', fontSize: 14, marginBottom: 40 }}>ADHD Panic Button</Text>
+
+      {step === 'panic' && (
+        <TouchableOpacity onPress={handlePanic} style={{
+          width: 240, height: 240, borderRadius: 120, backgroundColor: '#FF3B30',
+          justifyContent: 'center', alignItems: 'center',
+          shadowColor: '#FF3B30', shadowOpacity: 0.6, shadowRadius: 20
+        }}>
+          <Text style={{ color: '#FFF', fontSize: 32, fontWeight: '900' }}>I'M STUCK</Text>
+        </TouchableOpacity>
+      )}
+
+      {step === 'questions' && (
+        <View style={{ width: '100%' }}>
+          <Text style={{ color: '#FFF', fontSize: 20, fontWeight: '700', marginBottom: 20, textAlign: 'center' }}>
+            What are you stuck on?
+          </Text>
+          {QUESTIONS.map((q, i) => (
+            <TouchableOpacity key={i} onPress={() => handleQuestion(q.win)} style={{
+              backgroundColor: '#1A1A1A', borderRadius: 16, padding: 16, marginBottom: 10,
+              flexDirection: 'row', alignItems: 'center'
+            }}>
+              <Text style={{ fontSize: 24, marginRight: 12 }}>{q.emoji}</Text>
+              <Text style={{ color: '#FFF', fontSize: 16, fontWeight: '600' }}>{q.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
+
+      {step === 'win' && (
+        <View style={{ alignItems: 'center' }}>
+          <View style={{ backgroundColor: '#1A1A1A', borderRadius: 16, padding: 20, marginBottom: 20 }}>
+            <Text style={{ color: '#FFF', fontSize: 18, textAlign: 'center', lineHeight: 26 }}>
+              {currentWin}
+            </Text>
+          </View>
+          <TouchableOpacity onPress={handleDone} style={{
+            backgroundColor: '#2ECC8F', borderRadius: 16, paddingVertical: 14, paddingHorizontal: 32
+          }}>
+            <Text style={{ color: '#FFF', fontSize: 16, fontWeight: '700' }}>DONE →</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      <Text style={{ color: '#555', fontSize: 12, marginTop: 30 }}>
+        Panic saves: {saves}
+      </Text>
+    </View>
+  );
+}
